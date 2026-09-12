@@ -176,9 +176,13 @@ function inferKindFromUnknownModelId(modelId) {
 async function fetchCompatibleModelIds(connection) {
   if (!connection?.apiKey) return [];
 
-  const baseUrl = typeof connection?.providerSpecificData?.baseUrl === "string"
+  let baseUrl = typeof connection?.providerSpecificData?.baseUrl === "string"
     ? connection.providerSpecificData.baseUrl.trim().replace(/\/$/, "")
     : "";
+
+  if (!baseUrl && connection.provider === "openai") {
+    baseUrl = "https://api.openai.com/v1";
+  }
 
   if (!baseUrl) return [];
 
@@ -385,8 +389,9 @@ export async function buildModelsList(kindFilter, options = {}) {
           )
         : providerModels.map((model) => model.id);
 
-      if (isCompatibleProvider && rawModelIds.length === 0 && !skipDynamicFetch) {
-        rawModelIds = await fetchCompatibleModelIds(conn);
+      if (isCompatibleProvider && !hasExplicitEnabledModels && !skipDynamicFetch) {
+        const liveModelIds = await fetchCompatibleModelIds(conn);
+        if (liveModelIds.length > 0) rawModelIds = liveModelIds;
       }
 
       // Config-driven live catalog override (e.g. Kiro returns dynamic
