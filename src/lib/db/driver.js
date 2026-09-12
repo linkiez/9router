@@ -19,6 +19,9 @@ async function tryBunSqlite() {
 async function tryBetterSqlite() {
   // Skip on Bun — better-sqlite3 native bindings unsupported
   if (process.versions.bun) return null;
+  // better-sqlite3 binaries target glibc; Alpine uses musl and node:sqlite is
+  // the supported built-in driver there.
+  if (!process.report?.getReport?.().header?.glibcVersionRuntime) return null;
   // Skip on Node >= 24: the native addon SIGSEGVs on load there, which is a
   // process-level crash the try/catch below cannot recover from. node:sqlite covers it.
   const [nodeMajor] = process.versions.node.split(".").map(Number);
