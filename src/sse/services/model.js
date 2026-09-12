@@ -1,6 +1,6 @@
 // Re-export from open-sse with localDb integration
-import { getModelAliases, getComboByName, getProviderNodes } from "@/lib/localDb";
-import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
+import { getModelAliases, getComboByName, getCustomModels, getProviderNodes } from "@/lib/localDb";
+import { isKnownProviderModel, parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
 
 // Local provider alias overrides (HMR-friendly, applied on top of open-sse map)
@@ -76,6 +76,17 @@ export async function getModelInfo(modelStr) {
   }
 
   return getModelInfoCore(modelStr, getModelAliases);
+}
+
+export async function validateModelInfo({ provider, model }) {
+  if (!provider || !model) return { valid: false, known: true };
+
+  const providerEntry = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider);
+  if (!providerEntry?.models?.length) return { valid: true, known: false };
+
+  const customModels = await getCustomModels();
+  const known = isKnownProviderModel(provider, model, customModels);
+  return { valid: known !== false, known: known !== null };
 }
 
 /**

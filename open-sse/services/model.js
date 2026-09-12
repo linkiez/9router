@@ -1,4 +1,5 @@
 import REGISTRY from "../providers/registry/index.js";
+import { PROVIDER_MODELS } from "../providers/index.js";
 
 // Alias→id derived from registry single-source: id→id, alias→id, aliases[]→id.
 // Media-only providers without a registry transport entry keep explicit aliases here.
@@ -20,6 +21,21 @@ for (const entry of REGISTRY) {
 const BUILTIN_MODEL_ALIASES = {
   "grok-build": "gcli/grok-build",
 };
+
+export function isKnownProviderModel(provider, model, customModels = []) {
+  const providerEntry = REGISTRY.find((entry) => entry.id === provider || entry.alias === provider);
+  const staticModels = PROVIDER_MODELS[providerEntry?.alias || providerEntry?.id || provider];
+  if (!Array.isArray(staticModels) || staticModels.length === 0) return null;
+
+  const normalizedModel = String(model || "").toLowerCase();
+  const configuredModel = customModels.some((item) => {
+    const alias = item?.providerAlias || item?.provider || item?.providerId;
+    return alias === provider && String(item?.id || "").toLowerCase() === normalizedModel;
+  });
+  if (configuredModel) return true;
+
+  return staticModels.some((item) => String(item?.id || item).toLowerCase() === normalizedModel);
+}
 
 /**
  * Resolve provider alias to provider ID

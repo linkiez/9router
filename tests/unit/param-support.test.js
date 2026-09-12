@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import { stripUnsupportedParams } from "../../open-sse/translator/concerns/paramSupport.js";
 import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { GithubExecutor } from "../../open-sse/executors/github.js";
+import { isKnownProviderModel } from "../../open-sse/services/model.js";
 
 describe("stripUnsupportedParams", () => {
   it("flattens Cloudflare AI OpenAI content-part arrays", () => {
@@ -67,6 +68,12 @@ describe("stripUnsupportedParams", () => {
     stripUnsupportedParams("openai", "o3", body);
 
     expect(body).toEqual({ tools: [{ type: "function", function: { name: "lookup" } }] });
+  });
+
+  it("identifies models absent from a provider catalog", () => {
+    expect(isKnownProviderModel("openai", "gpt-5.4")).toBe(true);
+    expect(isKnownProviderModel("openai", "gpt-does-not-exist")).toBe(false);
+    expect(isKnownProviderModel("provider-node", "custom-model")).toBe(null);
   });
 
   it("omits temperature from GitHub Responses requests", () => {

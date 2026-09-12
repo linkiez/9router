@@ -9,7 +9,7 @@ import {
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
 import { getSettings } from "@/lib/localDb";
-import { getModelInfo, getComboModels } from "../services/model.js";
+import { getModelInfo, getComboModels, validateModelInfo } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
 import { getTransform as getPxpipeTransform } from "@/lib/pxpipe/loader.js";
@@ -219,6 +219,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   }
 
   const { provider, model } = modelInfo;
+
+  const modelValidation = await validateModelInfo({ provider, model });
+  if (!modelValidation.valid) {
+    log.warn("CHAT", `Unknown model rejected: ${provider}/${model}`);
+    return errorResponse(HTTP_STATUS.NOT_FOUND, `Model not found: ${provider}/${model}`);
+  }
 
   // Routing shown in the unified "▶" line (client model → provider/model)
 
