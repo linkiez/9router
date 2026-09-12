@@ -486,7 +486,17 @@ export function getCapabilitiesForModel(provider, model) {
  * @returns {{ capabilities: object, contextWindow: number, maxOutput: number }}
  */
 export function computeComboCapabilities(combo) {
-  const memberModels = Array.isArray(combo?.models) ? combo.models.filter(Boolean) : [];
+  let memberModels = combo?.models;
+  if (typeof memberModels === "string") {
+    try {
+      memberModels = JSON.parse(memberModels);
+    } catch {
+      memberModels = [];
+    }
+  }
+  if (!Array.isArray(memberModels)) memberModels = [];
+  memberModels = memberModels.filter(Boolean);
+
   if (memberModels.length === 0) {
     const defaultCaps = getCapabilitiesForModel(null, null);
     return {
