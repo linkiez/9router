@@ -6,7 +6,7 @@ import { OAUTH_ENDPOINTS, buildKimiHeaders } from "../config/appConstants.js";
 import { buildClineHeaders } from "../shared/clineAuth.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
-import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
+import { normalizeOpenAIRequestParams, stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 
 // Auth header descriptors — derived from registry transport.auth, fallback to hardcoded defaults.
 const BEARER = { combined: true, header: "Authorization", scheme: "bearer" };
@@ -68,7 +68,7 @@ export class DefaultExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body) {
-    const transformed = this.applyJsonSchemaFallback(body);
+    const transformed = normalizeOpenAIRequestParams(this.provider, model, this.applyJsonSchemaFallback(body));
 
     if (transformed && typeof transformed === "object") {
       // quirk: some openai-compatible providers reject Anthropic's client_metadata field

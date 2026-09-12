@@ -8,7 +8,7 @@ import { initState, translateRequest, translateResponse } from "../translator/in
 import { FORMATS } from "../translator/formats.js";
 import { parseSSELine, formatSSE } from "../utils/streamHelpers.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
-import { stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
+import { normalizeOpenAIRequestParams, requiresMaxCompletionTokens, stripUnsupportedParams } from "../translator/concerns/paramSupport.js";
 import { SSE_DONE } from "../utils/sseConstants.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import crypto from "crypto";
@@ -92,15 +92,12 @@ export class GithubExecutor extends BaseExecutor {
 
   // Newer OpenAI models (gpt-5+, gpt-6-*, o1, o3, o4) require max_completion_tokens instead of max_tokens
   requiresMaxCompletionTokens(model) {
-    return /gpt-[56]|o[134]-/i.test(model);
+    return requiresMaxCompletionTokens(model);
   }
 
   transformRequest(model, body, stream, credentials, endpoint = "chat") {
     const transformed = { ...body };
-    if (this.requiresMaxCompletionTokens(model) && transformed.max_tokens !== undefined) {
-      transformed.max_completion_tokens = transformed.max_tokens;
-      delete transformed.max_tokens;
-    }
+    normalizeOpenAIRequestParams("github", model, transformed);
     // "none" means no thinking — strip it so models that don't support "none" don't 400
     if (transformed.reasoning_effort === "none") {
       delete transformed.reasoning_effort;

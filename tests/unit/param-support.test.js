@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 import { stripUnsupportedParams } from "../../open-sse/translator/concerns/paramSupport.js";
+import { DefaultExecutor } from "../../open-sse/executors/default.js";
 import { GithubExecutor } from "../../open-sse/executors/github.js";
 
 describe("stripUnsupportedParams", () => {
@@ -36,6 +37,36 @@ describe("stripUnsupportedParams", () => {
     stripUnsupportedParams("github", "o3-mini", body);
 
     expect(body).toEqual({ temperature: 0.7 });
+  });
+
+  it("drops parallel tool calls when OpenAI has no tools", () => {
+    const body = { parallel_tool_calls: true };
+
+    stripUnsupportedParams("openai", "gpt-4.1", body);
+
+    expect(body).toEqual({});
+  });
+
+  it("renames completion tokens for OpenAI gpt-5 and gpt-6 models", () => {
+    const executor = new DefaultExecutor("openai");
+
+    expect(executor.transformRequest("gpt-5.4-mini", { max_tokens: 1000 })).toEqual({
+      max_completion_tokens: 1000
+    });
+    expect(executor.transformRequest("gpt-6-astra", { max_tokens: 1000 })).toEqual({
+      max_completion_tokens: 1000
+    });
+  });
+
+  it("drops parallel tool calls for OpenAI o-series models even with tools", () => {
+    const body = {
+      parallel_tool_calls: true,
+      tools: [{ type: "function", function: { name: "lookup" } }]
+    };
+
+    stripUnsupportedParams("openai", "o3", body);
+
+    expect(body).toEqual({ tools: [{ type: "function", function: { name: "lookup" } }] });
   });
 
   it("omits temperature from GitHub Responses requests", () => {

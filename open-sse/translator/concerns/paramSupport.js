@@ -11,7 +11,9 @@ const STRIP_RULES = [
   // GitHub Copilot gpt-5.4: temperature unsupported.
   { provider: "github", match: /gpt-5\.4/i, drop: ["temperature"] },
   // GitHub Copilot o-series models do not support parallel tool calls.
-  { provider: "github", match: /^o(?:1|3(?:-mini)?|4-mini)$/i, drop: ["parallel_tool_calls"] },
+  { provider: "github", match: /^o[134](?:-|$)/i, drop: ["parallel_tool_calls"] },
+  // OpenAI o-series models do not support parallel tool calls.
+  { provider: "openai", match: /^o[134](?:-|$)/i, drop: ["parallel_tool_calls"] },
   // GitHub Copilot Claude (except opus/sonnet 4.6): thinking + reasoning_effort rejected. #713
   { provider: "github", match: (m) => /claude/i.test(m) && !/claude.*(opus|sonnet).*4\.6/i.test(m), drop: ["thinking", "reasoning_effort"] },
   // Cloudflare Workers AI: content must be plain string, rejects OpenAI content-part array (#1926)
@@ -28,6 +30,21 @@ const STRIP_RULES = [
   { provider: "volcengine-ark", match: /kimi/i, maxOutputCap: 32768, clampToModelMaxOutput: true },
 ];
 
+export function requiresMaxCompletionTokens(model) {
+  return /^(?:gpt-[56](?:[.-]|$)|o[134](?:-|$))/i.test(model || "");
+}
+
+export function normalizeOpenAIRequestParams(provider, model, body) {
+  if ((provider !== "openai" && provider !== "github") || !body || typeof body !== "object") {
+    return body;
+  }
+  if (requiresMaxCompletionTokens(model) && body.max_tokens !== undefined) {
+    if (body.max_completion_tokens === undefined) body.max_completion_tokens = body.max_tokens;
+    delete body.max_tokens;
+  }
+  return body;
+}
+
 // Test a rule's match (regex or predicate) against the model id.
 function matches(rule, model) {
   if (!rule.match) return true;
@@ -43,6 +60,9 @@ function clampNumber(body, key, ceiling) {
 // Remove unsupported params from body in place; returns body.
 export function stripUnsupportedParams(provider, model, body) {
   if (!model || !body || typeof body !== "object") return body;
+  if (body.parallel_tool_calls !== undefined && (!Array.isArray(body.tools) || body.tools.length === 0)) {
+    delete body.parallel_tool_calls;
+  }
   for (const rule of STRIP_RULES) {
     if (rule.provider && rule.provider !== provider) continue;
     if (!matches(rule, model)) continue;
