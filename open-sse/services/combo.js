@@ -6,6 +6,7 @@ import { checkFallbackError, formatRetryAfter } from "./accountFallback.js";
 import { unavailableResponse } from "../utils/error.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { extractTextContent } from "../translator/formats/gemini.js";
+import { parseFusionResponseText } from "./fusionResponse.js";
 
 // Hard capabilities = input modalities; missing one drops request data (e.g. image
 // stripped). Must be prioritized. Soft (e.g. search) only degrades a feature.
@@ -592,7 +593,8 @@ export async function handleFusionChat({ body, models, handleSingleModel, log, c
     if (res.__error) { log.warn("FUSION", `Panel ${model} threw`, { error: res.__error?.message || String(res.__error) }); continue; }
     if (!res.ok) { log.warn("FUSION", `Panel ${model} failed`, { status: res.status }); continue; }
     try {
-      const json = await res.clone().json();
+      const json = parseFusionResponseText(await res.clone().text());
+      if (!json) throw new Error("response body is not valid JSON");
       const text = extractPanelText(json);
       if (text) {
         answers.push({ model, text });
