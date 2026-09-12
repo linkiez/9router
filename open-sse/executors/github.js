@@ -90,12 +90,12 @@ export class GithubExecutor extends BaseExecutor {
     return sanitized;
   }
 
-  // Newer OpenAI models (gpt-5+, o1, o3, o4) require max_completion_tokens instead of max_tokens
+  // Newer OpenAI models (gpt-5+, gpt-6-*, o1, o3, o4) require max_completion_tokens instead of max_tokens
   requiresMaxCompletionTokens(model) {
-    return /gpt-5|o[134]-/i.test(model);
+    return /gpt-[56]|o[134]-/i.test(model);
   }
 
-  transformRequest(model, body, stream, credentials) {
+  transformRequest(model, body, stream, credentials, endpoint = "chat") {
     const transformed = { ...body };
     if (this.requiresMaxCompletionTokens(model) && transformed.max_tokens !== undefined) {
       transformed.max_completion_tokens = transformed.max_tokens;
@@ -104,6 +104,9 @@ export class GithubExecutor extends BaseExecutor {
     // "none" means no thinking — strip it so models that don't support "none" don't 400
     if (transformed.reasoning_effort === "none") {
       delete transformed.reasoning_effort;
+    }
+    if (endpoint === "responses") {
+      delete transformed.temperature;
     }
     // Config-driven strip of params unsupported by this provider/model
     stripUnsupportedParams("github", model, transformed);
@@ -168,7 +171,12 @@ export class GithubExecutor extends BaseExecutor {
     const url = this.config.responsesUrl;
     const headers = this.buildHeaders(credentials, stream);
 
-    const transformedBody = openaiToOpenAIResponsesRequest(model, body, stream, credentials);
+    const transformedBody = openaiToOpenAIResponsesRequest(
+      model,
+      this.transformRequest(model, body, stream, credentials, "responses"),
+      stream,
+      credentials
+    );
 
     log?.debug("GITHUB", "Sending translated request to /responses");
 

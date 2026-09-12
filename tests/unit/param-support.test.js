@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 import { stripUnsupportedParams } from "../../open-sse/translator/concerns/paramSupport.js";
+import { GithubExecutor } from "../../open-sse/executors/github.js";
 
 describe("stripUnsupportedParams", () => {
   it("flattens Cloudflare AI OpenAI content-part arrays", () => {
@@ -27,6 +28,35 @@ describe("stripUnsupportedParams", () => {
     stripUnsupportedParams("github", "gpt-5.4", body);
 
     expect(body).toEqual({ top_p: 1 });
+  });
+
+  it("drops parallel tool calls for GitHub o-series models", () => {
+    const body = { parallel_tool_calls: true, temperature: 0.7 };
+
+    stripUnsupportedParams("github", "o3-mini", body);
+
+    expect(body).toEqual({ temperature: 0.7 });
+  });
+
+  it("omits temperature from GitHub Responses requests", () => {
+    const body = {
+      messages: [{ role: "user", content: "hello" }],
+      temperature: 0.7,
+      max_tokens: 1000
+    };
+
+    const executor = Object.create(GithubExecutor.prototype);
+    const result = executor.transformRequest("gpt-5.3-codex", body, true, {}, "responses");
+
+    expect(result).not.toHaveProperty("temperature");
+  });
+
+  it("recognizes gpt-6 models as requiring completion tokens", () => {
+    const executor = Object.create(GithubExecutor.prototype);
+    const result = executor.transformRequest("gpt-6-mini", { max_tokens: 1000 }, true, {});
+
+    expect(executor.requiresMaxCompletionTokens("gpt-6-mini")).toBe(true);
+    expect(result).toEqual({ max_completion_tokens: 1000 });
   });
 
   it("clamps VolcEngine Ark GLM max token fields to the model output ceiling", () => {
