@@ -1,6 +1,8 @@
 import { PROVIDER_MODELS } from "open-sse/config/providerModels.js";
 import { AI_PROVIDERS, ALIAS_TO_ID } from "@/shared/constants/providers";
 import { getModelKind } from "@/shared/constants/models";
+import { getCombos } from "@/lib/localDb";
+import { computeComboCapabilities } from "open-sse/providers/capabilities.js";
 
 const KIND_ENDPOINT = {
   llm: "/v1/chat/completions",
@@ -27,7 +29,13 @@ function buildInfo({ alias, providerId, model, kind, providerInfo }) {
   if (model.capabilities) out.capabilities = model.capabilities;
   if (model.options) out.options = model.options;
   if (model.dimensions) out.dimensions = model.dimensions;
-  if (model.contextWindow) out.contextWindow = model.contextWindow;
+  if (model.contextWindow) {
+    out.contextWindow = model.contextWindow;
+    out.context_length = model.contextWindow;
+  }
+  if (model.maxOutput) {
+    out.max_completion_tokens = model.maxOutput;
+  }
   if (kind === "tts" && TTS_VOICES_API.has(providerId)) {
     out.voicesUrl = `/v1/audio/voices?provider=${providerId}`;
   }
@@ -40,10 +48,40 @@ function buildInfo({ alias, providerId, model, kind, providerInfo }) {
   return out;
 }
 
-// id format: "{alias}/{modelId}" - alias may also be providerId
+// id format: "{alias}/{modelId}" or "combo-name" or "combo/{combo-name}"
 // requestedKind: optional, disambiguates duplicate ids across kinds (e.g. gemini-2.5-pro llm vs stt)
-function lookup(fullId, requestedKind) {
-  if (!fullId || !fullId.includes("/")) return null;
+async function lookup(fullId, requestedKind) {
+  if (!fullId) return null;
+
+  // 1. Check if fullId matches a combo model
+  let combos = [];
+  try {
+    combos = await getCombos();
+  } catch (e) {
+    // Ignore DB errors
+  }
+  const comboName = fullId.startsWith("combo/") ? fullId.slice(6) : fullId;
+  const combo = combos.find((c) => c.name === comboName || c.id === comboName);
+  if (combo) {
+    const kind = combo.kind || "llm";
+    if (!requestedKind || requestedKind === kind) {
+      const comboCaps = computeComboCapabilities(combo);
+      return {
+        id: combo.name,
+        name: combo.name,
+        kind,
+        owned_by: "combo",
+        endpoint: KIND_ENDPOINT[kind] || "/v1/chat/completions",
+        capabilities: comboCaps.capabilities,
+        contextWindow: comboCaps.contextWindow,
+        maxOutput: comboCaps.maxOutput,
+        context_length: comboCaps.contextWindow,
+        max_completion_tokens: comboCaps.maxOutput,
+      };
+    }
+  }
+
+  if (!fullId.includes("/")) return null;
   const slash = fullId.indexOf("/");
   const alias = fullId.slice(0, slash);
   const modelId = fullId.slice(slash + 1);
@@ -93,7 +131,7 @@ export async function GET(request) {
       { status: 400, headers: { "Access-Control-Allow-Origin": "*" } },
     );
   }
-  const info = lookup(id, kind);
+  const info = await lookup(id, kind);
   if (!info) {
     return Response.json(
       { error: { message: `Model not found: ${id}`, type: "not_found" } },

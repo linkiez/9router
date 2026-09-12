@@ -17,7 +17,7 @@ import { resolveCursorModels } from "open-sse/services/cursorModels.js";
 import { resolveZedModels } from "open-sse/shared/zedAuth.js";
 import { updateProviderCredentials } from "@/sse/services/tokenRefresh";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
-import { capabilitiesFromServiceKind, getCapabilitiesForModel } from "open-sse/providers/capabilities.js";
+import { capabilitiesFromServiceKind, getCapabilitiesForModel, computeComboCapabilities } from "open-sse/providers/capabilities.js";
 
 // Per-provider live model resolvers. Each receives a connection record and
 // returns { models: [{ id, name? }, ...] } | null on failure.
@@ -316,6 +316,13 @@ export async function buildModelsList(kindFilter, options = {}) {
     };
     if (combo.kind === "webSearch" || combo.kind === "webFetch") {
       entry.kind = combo.kind;
+    }
+    const comboKind = combo?.kind || LLM_KIND;
+    if (comboKind === LLM_KIND) {
+      const comboCaps = computeComboCapabilities(combo);
+      entry.capabilities = comboCaps.capabilities;
+      entry.context_length = comboCaps.contextWindow;
+      entry.max_completion_tokens = comboCaps.maxOutput;
     }
     models.push(entry);
   }

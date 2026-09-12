@@ -477,3 +477,67 @@ export function getCapabilitiesForModel(provider, model) {
   // 4. Floor
   return refine(null, provider, model);
 }
+
+/**
+ * Compute aggregate capabilities and token limits for a combo (fusion) model
+ * based on its constituent member models.
+ *
+ * @param {object} combo - Combo database record { name, kind, models: [...] }
+ * @returns {{ capabilities: object, contextWindow: number, maxOutput: number }}
+ */
+export function computeComboCapabilities(combo) {
+  const memberModels = Array.isArray(combo?.models) ? combo.models.filter(Boolean) : [];
+  if (memberModels.length === 0) {
+    const defaultCaps = getCapabilitiesForModel(null, null);
+    return {
+      capabilities: defaultCaps,
+      contextWindow: defaultCaps.contextWindow,
+      maxOutput: defaultCaps.maxOutput,
+    };
+  }
+
+  let minContextWindow = Infinity;
+  let minMaxOutput = Infinity;
+  let vision = false;
+  let search = false;
+  let reasoning = false;
+  let tools = true;
+
+  for (const m of memberModels) {
+    const str = String(m);
+    let provider = null;
+    let modelId = str;
+    if (str.includes("/")) {
+      const parts = str.split("/");
+      provider = parts[0];
+      modelId = parts.slice(1).join("/");
+    }
+    const caps = getCapabilitiesForModel(provider, modelId);
+    if (caps) {
+      if (Number.isFinite(caps.contextWindow) && caps.contextWindow > 0) {
+        minContextWindow = Math.min(minContextWindow, caps.contextWindow);
+      }
+      if (Number.isFinite(caps.maxOutput) && caps.maxOutput > 0) {
+        minMaxOutput = Math.min(minMaxOutput, caps.maxOutput);
+      }
+      if (caps.vision) vision = true;
+      if (caps.search) search = true;
+      if (caps.reasoning) reasoning = true;
+      if (caps.tools === false) tools = false;
+    }
+  }
+
+  const contextWindow = Number.isFinite(minContextWindow) ? minContextWindow : 200000;
+  const maxOutput = Number.isFinite(minMaxOutput) ? minMaxOutput : 64000;
+
+  const capabilities = {
+    vision,
+    tools,
+    reasoning,
+    search,
+    contextWindow,
+    maxOutput,
+  };
+
+  return { capabilities, contextWindow, maxOutput };
+}
