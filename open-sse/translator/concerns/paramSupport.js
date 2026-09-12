@@ -10,6 +10,8 @@ const STRIP_RULES = [
   { match: /claude/i, drop: ["temperature"] },
   // GitHub Copilot gpt-5.4: temperature unsupported.
   { provider: "github", match: /gpt-5\.4/i, drop: ["temperature"] },
+  // OpenAI reasoning models only accept their default temperature.
+  { provider: "openai", match: /^(?:gpt-[56]|o[134](?:-|$))/i, drop: ["temperature"] },
   // GitHub Copilot o-series models do not support parallel tool calls.
   { provider: "github", match: /^o[134](?:-|$)/i, drop: ["parallel_tool_calls"] },
   // OpenAI o-series models do not support parallel tool calls.

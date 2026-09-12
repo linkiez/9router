@@ -70,6 +70,14 @@ describe("stripUnsupportedParams", () => {
     expect(body).toEqual({ tools: [{ type: "function", function: { name: "lookup" } }] });
   });
 
+  it("drops temperature for OpenAI reasoning models", () => {
+    const body = { temperature: 0, top_p: 1 };
+
+    stripUnsupportedParams("openai", "gpt-5", body);
+
+    expect(body).toEqual({ top_p: 1 });
+  });
+
   it("identifies models absent from a provider catalog", () => {
     expect(isKnownProviderModel("openai", "gpt-5.4")).toBe(true);
     expect(isKnownProviderModel("openai", "gpt-does-not-exist")).toBe(false);
