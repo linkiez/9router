@@ -18,7 +18,7 @@ import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "open-sse/services/combo.js";
 import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActiveAdapterStrategy } from "open-sse/services/capacityAdapter.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
-import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+import { HTTP_STATUS, TOKEN_SAVER_HEADER } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
@@ -111,7 +111,17 @@ export async function handleChat(request, clientRawRequest = null) {
           let cleanRawReq = clientRawRequest;
           if (isPanel && clientRawRequest) {
             const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
-            cleanRawReq = { ...clientRawRequest, body: cleanBody };
+            // Panel fan-out calls dozens of models concurrently with the same
+            // large body. Running Headroom/RTK compression per-panel means N
+            // simultaneous /v1/compress requests against the same payload,
+            // which was observed to OOM-kill the Headroom sidecar under load.
+            // Compression already runs once on the final judge dispatch, so
+            // it's safe (and required) to skip it here.
+            cleanRawReq = {
+              ...clientRawRequest,
+              body: cleanBody,
+              headers: { ...(clientRawRequest.headers || {}), [TOKEN_SAVER_HEADER]: "off" },
+            };
           }
           return handleSingleModelChat(b, m, cleanRawReq, request, apiKey);
         },
@@ -188,7 +198,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             let cleanRawReq = clientRawRequest;
             if (isPanel && clientRawRequest) {
               const { tools, tool_choice, ...cleanBody } = clientRawRequest.body || {};
-              cleanRawReq = { ...clientRawRequest, body: cleanBody };
+              // See matching comment above: skip Headroom/RTK per-panel to
+              // avoid hammering the Headroom sidecar with concurrent compress
+              // calls for the same body (root cause of sidecar OOMKills).
+              cleanRawReq = {
+                ...clientRawRequest,
+                body: cleanBody,
+                headers: { ...(clientRawRequest.headers || {}), [TOKEN_SAVER_HEADER]: "off" },
+              };
             }
             return handleSingleModelChat(b, m, cleanRawReq, request, apiKey);
           },
