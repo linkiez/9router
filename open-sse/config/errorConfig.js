@@ -43,6 +43,7 @@ export const MAX_RATE_LIMIT_COOLDOWN_MS = 30 * 60 * 1000;
 
 // Cooldown durations (ms)
 const COOLDOWN = {
+  permanent: 24 * 60 * 60 * 1000, // 24 hours (auto-disable non-existent models)
   long: 2 * 60 * 1000,
   short: 5 * 1000,
 };
@@ -58,6 +59,8 @@ const COOLDOWN = {
  */
 export const ERROR_RULES = [
   // --- Text-based rules (checked first, order = priority) ---
+  { text: "not found",                cooldownMs: COOLDOWN.permanent },
+  { text: "does not exist",           cooldownMs: COOLDOWN.permanent },
   { text: "no credentials",           cooldownMs: COOLDOWN.long },
   { text: "request not allowed",      cooldownMs: COOLDOWN.short },
   { text: "improperly formed request", cooldownMs: COOLDOWN.long },
@@ -71,7 +74,7 @@ export const ERROR_RULES = [
   { status: 401, cooldownMs: COOLDOWN.long },
   { status: 402, cooldownMs: COOLDOWN.long },
   { status: 403, cooldownMs: COOLDOWN.long },
-  { status: 404, cooldownMs: COOLDOWN.long },
+  { status: 404, cooldownMs: COOLDOWN.permanent },
   { status: 429, backoff: true },
 ];
 
