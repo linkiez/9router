@@ -1,6 +1,6 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, getModelLockError, getModelLockKey } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache } from "./antigravityQuota.js";
@@ -120,12 +120,13 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       const earliest = expiries.sort()[0] || null;
       if (earliest) {
         const earliestConn = lockedConns[0];
-        log.warn("AUTH", `${provider} | all ${connections.length} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | lastError=${earliestConn?.lastError?.slice(0, 50)}`);
+        const modelError = getModelLockError(earliestConn, model);
+        log.warn("AUTH", `${provider} | all ${connections.length} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | lastError=${modelError?.slice(0, 50)}`);
         return {
           allRateLimited: true,
           retryAfter: earliest,
           retryAfterHuman: formatRetryAfter(earliest),
-          lastError: earliestConn?.lastError || null,
+          lastError: modelError,
           lastErrorCode: earliestConn?.errorCode || null
         };
       }
@@ -264,7 +265,12 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
   const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
-  const lockUpdate = buildModelLockUpdate(githubResetAtMs ? null : model, cooldownMs);
+  // Record the failure reason under a lock-scoped key (modelLockError_${model}) in
+  // addition to the shared testStatus/lastError fields below. Without this, once
+  // several models fail on the same account, the shared `lastError` only ever
+  // reflects the most recent failure — every other already-locked model then
+  // misreports that unrelated error as its own (#lastError-attribution).
+  const lockUpdate = buildModelLockUpdate(githubResetAtMs ? null : model, cooldownMs, reason);
 
   await updateProviderConnection(connectionId, {
     ...lockUpdate,
@@ -275,7 +281,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     backoffLevel: newBackoffLevel ?? backoffLevel
   });
 
-  const lockKey = Object.keys(lockUpdate)[0];
+  const lockKey = getModelLockKey(githubResetAtMs ? null : model);
   const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
   log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${status}]`);
 
@@ -321,6 +327,10 @@ export async function clearAccountError(connectionId, currentConnection, model =
   });
 
   const clearObj = Object.fromEntries(keysToClear.map(k => [k, null]));
+  // Clear the matching per-model error snapshot alongside each lock being cleared.
+  for (const k of keysToClear) {
+    clearObj[k.replace("modelLock_", "modelLockError_")] = null;
+  }
 
   // Only reset error state if no active locks remain
   if (remainingActiveLocks.length === 0) {

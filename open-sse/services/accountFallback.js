@@ -108,9 +108,20 @@ export const MODEL_LOCK_PREFIX = "modelLock_";
 /** Special key used when no model is known (account-level lock) */
 export const MODEL_LOCK_ALL = `${MODEL_LOCK_PREFIX}__all`;
 
+/** Prefix for the per-model error snapshot that accompanies a model lock */
+export const MODEL_LOCK_ERROR_PREFIX = "modelLockError_";
+
+/** Special key used when no model is known (account-level lock error) */
+export const MODEL_LOCK_ERROR_ALL = `${MODEL_LOCK_ERROR_PREFIX}__all`;
+
 /** Build the flat field key for a model lock */
 export function getModelLockKey(model) {
   return model ? `${MODEL_LOCK_PREFIX}${model}` : MODEL_LOCK_ALL;
+}
+
+/** Build the flat field key for a model lock's error snapshot */
+export function getModelLockErrorKey(model) {
+  return model ? `${MODEL_LOCK_ERROR_PREFIX}${model}` : MODEL_LOCK_ERROR_ALL;
 }
 
 /**
@@ -142,20 +153,38 @@ export function getEarliestModelLockUntil(connection) {
 }
 
 /**
- * Build update object to set a model lock on a connection.
+ * Read the error snapshot recorded alongside a specific model's lock.
+ * Falls back to the account-level `lastError` field when no per-model
+ * snapshot exists (e.g. connections locked before this field existed),
+ * so an already-locked model reports its own failure reason instead of
+ * whichever other model most recently overwrote the shared account field.
  */
-export function buildModelLockUpdate(model, cooldownMs) {
-  const key = getModelLockKey(model);
-  return { [key]: new Date(Date.now() + cooldownMs).toISOString() };
+export function getModelLockError(connection, model) {
+  if (!connection) return null;
+  const key = getModelLockErrorKey(model);
+  return connection[key] || connection[MODEL_LOCK_ERROR_ALL] || connection.lastError || null;
 }
 
 /**
- * Build update object to clear all model locks on a connection.
+ * Build update object to set a model lock on a connection.
+ * `errorReason`, when provided, is stored under a lock-scoped key
+ * (`modelLockError_${model}`) so each model's own failure reason survives
+ * independently of the shared account-level `lastError` field.
+ */
+export function buildModelLockUpdate(model, cooldownMs, errorReason = null) {
+  const key = getModelLockKey(model);
+  const update = { [key]: new Date(Date.now() + cooldownMs).toISOString() };
+  if (errorReason) update[getModelLockErrorKey(model)] = errorReason;
+  return update;
+}
+
+/**
+ * Build update object to clear all model locks (and their error snapshots) on a connection.
  */
 export function buildClearModelLocksUpdate(connection) {
   const cleared = {};
   for (const key of Object.keys(connection)) {
-    if (key.startsWith(MODEL_LOCK_PREFIX)) cleared[key] = null;
+    if (key.startsWith(MODEL_LOCK_PREFIX) || key.startsWith(MODEL_LOCK_ERROR_PREFIX)) cleared[key] = null;
   }
   return cleared;
 }
