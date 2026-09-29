@@ -7,7 +7,7 @@ const log = { info: () => {}, warn: () => {}, debug: () => {} };
 // Minimal OpenAI-chat Response stub with the .ok + .clone().json() surface the engine uses.
 function okResponse(content, { delayMs = 0 } = {}) {
   const json = { choices: [{ message: { role: "assistant", content } }] };
-  const make = () => ({ ok: true, status: 200, clone: make, json: async () => json });
+  const make = () => ({ ok: true, status: 200, clone: make, json: async () => json, text: async () => JSON.stringify(json) });
   const res = make();
   return delayMs > 0 ? new Promise((r) => setTimeout(() => r(res), delayMs)) : res;
 }

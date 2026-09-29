@@ -264,7 +264,7 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
-  const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
+  const reason = typeof errorText === "string" ? errorText.slice(0, 200) : "Provider error";
   // Record the failure reason under a lock-scoped key (modelLockError_${model}) in
   // addition to the shared testStatus/lastError fields below. Without this, once
   // several models fail on the same account, the shared `lastError` only ever
